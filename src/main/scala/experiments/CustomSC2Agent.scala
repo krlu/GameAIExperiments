@@ -13,6 +13,7 @@ class CustomSC2Agent extends S2Agent {
     println("game starting...")
   }
 
+  override def onGameEnd(): Unit = super.onGameEnd()
   override def onStep(): Unit = {
     Thread.sleep(1000 / 30)
     val scvs = observation().getUnits(Alliance.SELF, UnitInPool.isUnit(Units.TERRAN_SCV)).asScala.toList
@@ -24,23 +25,25 @@ class CustomSC2Agent extends S2Agent {
         immediateTask.equals(Abilities.HARVEST_GATHER) || immediateTask.equals(Abilities.HARVEST_RETURN)
       }
     }
-    println(harvesters.size)
+
+    val exploredMinerals = observation().getUnits(Alliance.NEUTRAL, UnitInPool.isUnit(Units.NEUTRAL_MINERAL_FIELD750)).asScala.toList
+    val observableMinerals = exploredMinerals.filter(_.unit().getMineralContents.isPresent)
 
     scvs.foreach{ scv: UnitInPool =>
       val isIdle = !scv.unit().getActive.get()
       if(isIdle)
-        actions().unitCommand(scv.unit(), Abilities.HARVEST_GATHER, findNearestMineralPatch(scv).unit(), false)
+        actions().unitCommand(scv.unit(), Abilities.HARVEST_GATHER, findNearestMineralPatch(scv, exploredMinerals).unit(), false)
     }
-//    println(observation().getMinerals)
-    if(observation().getMinerals > 100)
-      actions().unitCommand(scvs.head.unit(), Abilities.BUILD_SUPPLY_DEPOT, Point2d.of(15, 15), false)
+    if(observation().getMinerals > 100) {
+      val worker = scvs.head.unit()
+      val (x,y) = (worker.getPosition.getX, worker.getPosition.getY)
+      actions().unitCommand(worker, Abilities.BUILD_SUPPLY_DEPOT, Point2d.of(x + 10, y + 10), false)
+    }
   }
 
-  private def findNearestMineralPatch(scv: UnitInPool): UnitInPool = {
+  private def findNearestMineralPatch(scv: UnitInPool, exploredMinerals: List[UnitInPool]): UnitInPool = {
     val currPosition = scv.unit().getPosition
-    val units = observation.getUnits(Alliance.NEUTRAL).asScala.toList.filter{ u: UnitInPool =>
-      sameUnitType(u, Units.NEUTRAL_MINERAL_FIELD) || sameUnitType(u, Units.NEUTRAL_MINERAL_FIELD750)
-    }.map{ mineral =>
+    val units = exploredMinerals.map{ mineral =>
       (mineral, mineral.unit().getPosition.distance(currPosition))
     }.sortWith(_._2 < _._2)
     units.head._1
